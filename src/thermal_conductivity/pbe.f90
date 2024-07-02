@@ -1,7 +1,8 @@
 #include "precompilerdefinitions"
 module pbe
 use konstanter, only: r8, lo_tol, lo_sqtol, lo_pi, lo_kb_hartree, lo_freqtol, lo_huge, lo_kappa_au_to_SI, &
-                      lo_phonongroupveltol, lo_groupvel_Hartreebohr_to_ms
+                      lo_phonongroupveltol, lo_groupvel_Hartreebohr_to_ms, lo_frequency_Hartree_to_THz, &
+					  lo_kappa_au_to_SI
 use gottochblandat, only: lo_sqnorm, lo_planck, lo_outerproduct, lo_chop
 use mpi_wrappers, only: lo_mpi_helper, MPI_SUM, MPI_DOUBLE_PRECISION, MPI_IN_PLACE
 use lo_memtracker, only: lo_mem_helper
@@ -31,7 +32,6 @@ subroutine get_kappa(dr, qp, uc, temperature, kappa)
     real(r8), intent(in) :: temperature
     !> thermal conductivity tensor
     real(r8), dimension(3, 3), intent(out) :: kappa
-
     real(r8), dimension(3) :: v0, v1
     real(r8) :: n, f0, omega, omthres, prefactor
     integer :: i, j, k, l
@@ -65,13 +65,22 @@ subroutine get_kappa(dr, qp, uc, temperature, kappa)
 
     ! Sum it ip!
     kappa = 0.0_r8
+	Open (Unit=1003, File='modekappa.dat', Status='unknown', Form='formatted')
     do i = 1, qp%n_full_point
         do j = 1, dr%n_mode
             kappa = kappa + dr%aq(i)%kappa(:, :, j)/qp%n_full_point
+! mode-resolved kappa
+            Write(1003,'(4f20.10)') dr%aq(i)%omega(j)*lo_frequency_Hartree_to_THz, &
+			              dr%aq(i)%kappa(1, 1, j)*lo_kappa_au_to_SI/qp%n_full_point, &
+			              dr%aq(i)%kappa(2, 2, j)*lo_kappa_au_to_SI/qp%n_full_point, &
+						  dr%aq(i)%kappa(3, 3, j)*lo_kappa_au_to_SI/qp%n_full_point
+! mode-resolved kappa
         end do
     end do
+	Close(1003)
+
     f0 = sum(abs(kappa))
-    kappa = lo_chop(kappa, f0*1E-6_r8)
+    kappa = lo_chop(kappa, f0*1E-6_r8)	
 end subroutine
 
 !> Calculate the QS term
@@ -767,7 +776,8 @@ subroutine get_kappa_offdiag(dr, qp, uc, temperature, fc, mem, mw, kappa_offdiag
     call mem%allocate(buf_velsq, [3, 3, dr%n_mode, dr%n_mode], persistent=.false., scalable=.false., file=__FILE__, line=__LINE__)
 
     kappa_offdiag = 0.0_r8
-
+	
+    Open (Unit=1003, File='modekappa_offdiag.dat', Status='unknown', Form='formatted')
     do iq = 1, qp%n_irr_point
         if (mod(iq, mw%n) .ne. mw%r) cycle
         buf_vel = 0.0_r8
@@ -931,9 +941,19 @@ subroutine get_kappa_offdiag(dr, qp, uc, temperature, fc, mem, mw, kappa_offdiag
                 f0 = f0*(om1 + om2)**2/4.0_r8
                 tau = (tau1 + tau2)/((tau1 + tau2)**2 + (om2 - om1)**2)
                 kappa_offdiag(:, :) = kappa_offdiag(:, :) + buf_velsq(:, :, kmode, jmode)*tau*f0*pref
+				
+				!
+				Write(1003,'(5f20.10)')dr%iq(iq)%omega(jmode)*lo_frequency_Hartree_to_THz, &
+				   dr%iq(iq)%omega(kmode)*lo_frequency_Hartree_to_THz, &
+				   kappa_offdiag(1, 1)*lo_kappa_au_to_SI, &
+				   kappa_offdiag(2, 2)*lo_kappa_au_to_SI, &
+				   kappa_offdiag(3, 3)*lo_kappa_au_to_SI
+				!
             end do ! k mode
         end do ! j mode
     end do ! i qpt
+	Close(1003)
+
     call mem%deallocate(buf_vel, persistent=.false., scalable=.false., file=__FILE__, line=__LINE__)
     call mem%deallocate(buf_velsq, persistent=.false., scalable=.false., file=__FILE__, line=__LINE__)
 
