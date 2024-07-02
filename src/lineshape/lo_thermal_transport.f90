@@ -502,6 +502,7 @@ subroutine report(tc, qp, mw)
     m0 = 0.0_r8
     m1 = 0.0_r8
     m2 = 0.0_r8
+	
     do i = 1, tc%n_local_qpoint
         iq = tc%qind(i)
         do s1 = 1, tc%n_mode
@@ -513,7 +514,8 @@ subroutine report(tc, qp, mw)
             end if
         end do
         end do
-    end do
+    end do	
+	
     m2 = m0 + m1
 
     call mw%allreduce('sum', m0)
@@ -582,15 +584,27 @@ subroutine write_to_hdf5(tc, qp, dr, p, filename, enhet, mw, mem)
         end if
 
         ! First calculate the total Kappa.
+	!
+	    Open (Unit=1003, File='modeQHGK.dat', Status='unknown', Form='formatted')
+	    Write (1003, '(5a20)') 'omega1','omega2','xx','yy','zz'
         m0 = 0.0_r8
         do i = 1, tc%n_local_qpoint
             iq = tc%qind(i)
             do s1 = 1, tc%n_mode
             do s2 = 1, tc%n_mode
                 m0 = m0 + tc%kappa(:, :, s1, s2, i)*qp%ip(iq)%integration_weight
+!				
+				Write (1003, '(5f20.10)') dr%iq(iq)%omega(s1), dr%iq(iq)%omega(s2), &
+				tc%kappa(1, 1, s1, s2, i)*qp%ip(iq)%integration_weight*lo_kappa_au_to_SI, &
+				tc%kappa(2, 2, s1, s2, i)*qp%ip(iq)%integration_weight*lo_kappa_au_to_SI, &
+				tc%kappa(3, 3, s1, s2, i)*qp%ip(iq)%integration_weight*lo_kappa_au_to_SI
+!				
             end do
             end do
         end do
+		
+		Close(1003)
+		
         call mw%allreduce('sum', m0)
 
         ! Decide on a tolerance
